@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+<title>Three.js Collection Switch</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<style>
+
+*{
+  margin:0;
+  padding:0;
+  box-sizing:border-box;
+}
+
+body{
+  background:#070707;
+  color:white;
+  font-family:Arial, sans-serif;
+  
+}
+
+/* -------------------------
+   Main Section
+------------------------- */
+
+.hero_section{
+  width:100%;
+  height:100vh;
+  position:relative;
+  overflow:hidden;
+}
+
+/* -------------------------
+   WebGL Canvas
+------------------------- */
+
+#webglContainer{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  z-index:1;
+}
+
+/* -------------------------
+   Buttons
+------------------------- */
+
+.collection_wrapper{
+  position:absolute;
+  bottom:40px;
+  left:40px;
+  z-index:10;
+
+  display:flex;
+  gap:16px;
+}
+
+.collection-link{
+  padding:14px 24px;
+  border:1px solid rgba(255,255,255,.2);
+  background:rgba(255,255,255,.05);
+  backdrop-filter:blur(10px);
+
+  cursor:pointer;
+
+  transition:.4s ease;
+}
+
+.collection-link.active{
+  background:white;
+  color:black;
+}
+
+/* -------------------------
+   Z-index Demo Elements
+------------------------- */
+
+.z_box{
+  position:absolute;
+  top:50%;
+  right:80px;
+
+  width:180px;
+  height:180px;
+
+  border-radius:24px;
+
+  transition:.5s ease;
+}
+
+.z_box[data-z-index="-1"]{
+  opacity:.2;
+  transform:scale(.8);
+}
+
+.z_box[data-z-index="2"]{
+  opacity:1;
+  transform:scale(1);
+}
+
+.box_1{
+  background:#ff6600;
+}
+
+.box_2{
+  background:#00aaff;
+}
+
+/* -------------------------
+   Lottie Demo
+------------------------- */
+
+.lottie_case-index,
+.lottie_case-index-2{
+  position:absolute;
+  top:40px;
+  left:40px;
+
+  font-size:32px;
+  font-weight:bold;
+
+  z-index:10;
+
+  transition:.5s ease;
+}
+
+.lottie_case-index-2{
+  opacity:0;
+}
+
+</style>
+</head>
+
+<body>
+<section class="hero_section"> </section>
+<section class="hero_section">
+
+  <!-- WebGL -->
+  <div id="webglContainer"></div>
+
+  <!-- Demo Lottie Text -->
+  <div class="lottie_case-index">
+    Collection One
+  </div>
+
+  <div class="lottie_case-index-2">
+    Collection Two
+  </div>
+
+  <!-- Demo Z Elements -->
+  <div class="z_box box_1"
+       collection-button="1"
+       data-z-index="2">
+  </div>
+
+  <div class="z_box box_2"
+       collection-button="2"
+       data-z-index="-1">
+  </div>
+
+  <!-- Buttons -->
+  <div class="collection_wrapper">
+
+    <div class="collection-link active"
+         data-collection-link="1">
+      Collection 1
+    </div>
+
+    <div class="collection-link"
+         data-collection-link="2">
+      Collection 2
+    </div>
+
+  </div>
+
+</section>
+<section class="hero_section"> </section>
+
+<style>
+.collections_card_corner {
+  opacity: 0;
+  transition: opacity 0.5s cubic-bezier(.2, 1, .3, 1);
+}
+
+.collections_card_bg-img {
+  opacity: 0.55;
+  transition: opacity 0.5s cubic-bezier(.2, 1, .3, 1);
+}
+
+.collection_card_img {
+  opacity: 0.75;
+  transition: opacity 0.5s cubic-bezier(.2, 1, .3, 1);
+}
+
+.collection-link.active .collections_card_corner,
+.collection-link.active .collections_card_bg-img,
+.collection-link.active .collection_card_img,
+.collection-link:hover .collections_card_corner,
+.collection-link:hover .collections_card_bg-img,
+.collection-link:hover .collection_card_img {
+  opacity: 1;
+}
+
+.collection-link:not(.active):not(:hover) .collections_card_bg-img {
+  opacity: 0.55;
+}
+
+.collection-link:not(.active):not(:hover) .collection_card_img {
+  opacity: 0.75;
+}
+</style>
+
+<script>
+(() => {
+
+  /* ----------------------------------
+     SAFETY CHECKS
+  ---------------------------------- */
+
+  if (typeof THREE === "undefined") {
+    console.error("THREE.js not loaded");
+    return;
+  }
+
+  const container =
+    document.getElementById("webglContainer");
+
+  if (!container) {
+    console.error("webglContainer not found");
+    return;
+  }
+
+  if (!window.WebGLRenderingContext) {
+    console.error("WebGL not supported");
+    container.style.display = "none";
+    return;
+  }
+
+  /* ----------------------------------
+     IMAGES
+  ---------------------------------- */
+
+  const images = {
+    1: "https://cdn.prod.website-files.com/675835c7f4ae1fa1a79b3733/67c6b3bb846631fc97e4d6e3_658938bdc8e942f531f832e90115063c_collections-oraniths.webp",
+
+    2: "https://cdn.prod.website-files.com/675835c7f4ae1fa1a79b3733/67d981fb252db636a62ada10_9fe515e30f59684f5ddbdef1174d5129_collections-anturax-v2.webp",
+  };
+
+  /* ----------------------------------
+     VARIABLES
+  ---------------------------------- */
+
+  let scene;
+  let camera;
+  let renderer;
+  let material;
+  let plane;
+
+  let textures = {};
+
+  let activeTexture = 1;
+  let transitionTexture = null;
+
+  let progress = 1;
+  let isAnimating = false;
+
+  let animationFrameId = null;
+
+  /* ----------------------------------
+     INIT
+  ---------------------------------- */
+
+  function initWebGL() {
+
+    scene = new THREE.Scene();
+
+    camera = new THREE.PerspectiveCamera(
+      45,
+      container.clientWidth /
+      container.clientHeight,
+      0.1,
+      100
+    );
+
+    camera.position.set(0, 0, 10);
+
+    renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: true,
+      powerPreference: "high-performance",
+    });
+
+    renderer.setPixelRatio(
+      Math.min(window.devicePixelRatio, 2)
+    );
+
+    renderer.setSize(
+      container.clientWidth,
+      container.clientHeight
+    );
+
+    if (!container.querySelector("canvas")) {
+      container.appendChild(renderer.domElement);
+    }
+
+    loadTextures();
+  }
+
+  /* ----------------------------------
+     LOAD TEXTURES
+  ---------------------------------- */
+
+  function loadTextures() {
+
+    const loader = new THREE.TextureLoader();
+
+    let loaded = 0;
+    const total = Object.keys(images).length;
+
+    Object.keys(images).forEach((key) => {
+
+      loader.load(
+        images[key],
+
+        (texture) => {
+
+          texture.minFilter =
+            THREE.LinearFilter;
+
+          texture.magFilter =
+            THREE.LinearFilter;
+
+          textures[key] = texture;
+
+          loaded++;
+
+          if (loaded === total) {
+
+            createScene();
+
+            setupEventListeners();
+
+            setInitialStyles();
+
+            animate();
+          }
+        },
+
+        undefined,
+
+        (error) => {
+          console.error(
+            "Texture failed:",
+            images[key],
+            error
+          );
+        }
+      );
+    });
+  }
+
+  /* ----------------------------------
+     CREATE SCENE
+  ---------------------------------- */
+
+  function createScene() {
+
+    const vertexShader = `
+      varying vec2 vUv;
+
+      void main() {
+
+        vUv = uv;
+
+        gl_Position =
+          projectionMatrix *
+          modelViewMatrix *
+          vec4(position, 1.0);
+      }
+    `;
+
+    const fragmentShader = `
+      uniform vec3 uFillColor;
+      uniform float uProgress;
+      uniform float uType;
+
+      uniform vec2 uTextureSize;
+      uniform vec2 uElementSize;
+
+      uniform sampler2D uTexture;
+
+      varying vec2 vUv;
+
+      float quadraticInOut(float t) {
+
+        float p = 2.0 * t * t;
+
+        return t < 0.5
+          ? p
+          : -p + (4.0 * t) - 1.0;
+      }
+
+      void main() {
+
+        vec2 uv = vUv - vec2(0.5);
+
+        float aspect1 =
+          uTextureSize.x /
+          uTextureSize.y;
+
+        float aspect2 =
+          uElementSize.x /
+          uElementSize.y;
+
+        if (aspect1 > aspect2) {
+
+          uv *= vec2(
+            aspect2 / aspect1,
+            1.0
+          );
+
+        } else {
+
+          uv *= vec2(
+            1.0,
+            aspect1 / aspect2
+          );
+        }
+
+        uv += vec2(0.5);
+
+        vec4 defaultColor =
+          texture2D(uTexture, uv);
+
+        vec4 finalColor =
+          defaultColor;
+
+        if (uType == 3.0) {
+
+          float progress =
+            quadraticInOut(
+              1.0 - uProgress
+            );
+
+          float s = 50.0;
+
+          float imageAspect =
+            uTextureSize.x /
+            uTextureSize.y;
+
+          vec2 gridSize = vec2(
+            s,
+            floor(s / imageAspect)
+          );
+
+          float v = smoothstep(
+            0.0,
+            1.0,
+
+            vUv.y +
+
+            sin(
+              vUv.x * 4.0 +
+              progress * 6.0
+            ) *
+
+            mix(
+              0.3,
+              0.1,
+              abs(0.5 - vUv.x)
+            ) *
+
+            0.5 *
+
+            smoothstep(
+              0.0,
+              0.2,
+              progress
+            ) +
+
+            (1.0 - progress * 2.0)
+          );
+
+          float mixnewUV =
+            (
+              vUv.x * 3.0 +
+              (1.0 - v) * 50.0
+            ) * progress;
+
+          vec2 subUv = mix(
+            uv,
+            floor(uv * gridSize) /
+            gridSize,
+            mixnewUV
+          );
+
+          vec4 color =
+            texture2D(
+              uTexture,
+              subUv
+            );
+
+          color.a = mix(
+            1.0,
+            pow(v, 5.0),
+            step(0.0, progress)
+          );
+
+          color.a = pow(v, 1.0);
+
+          color.rgb = mix(
+            color.rgb,
+            uFillColor,
+
+            smoothstep(
+              0.5,
+              0.0,
+              abs(0.5 - color.a)
+            ) * progress
+          );
+
+          finalColor = color;
+        }
+
+        finalColor.rgb = pow(
+          finalColor.rgb,
+          vec3(1.0 / 1.2)
+        );
+
+        gl_FragColor = finalColor;
+      }
+    `;
+
+    material =
+      new THREE.ShaderMaterial({
+
+      vertexShader,
+      fragmentShader,
+
+      uniforms: {
+
+        uFillColor: {
+          value: new THREE.Color(
+            "#070707"
+          ),
+        },
+
+        uProgress: {
+          value: 1,
+        },
+
+        uType: {
+          value: 3,
+        },
+
+        uTextureSize: {
+          value: new THREE.Vector2(
+            textures[activeTexture]
+              .image.width,
+
+            textures[activeTexture]
+              .image.height
+          ),
+        },
+
+        uElementSize: {
+          value: new THREE.Vector2(
+            container.clientWidth,
+            container.clientHeight
+          ),
+        },
+
+        uTexture: {
+          value:
+            textures[activeTexture],
+        },
+      },
+
+      transparent: true,
+    });
+
+    const geometry =
+      new THREE.PlaneGeometry(8, 8);
+
+    plane = new THREE.Mesh(
+      geometry,
+      material
+    );
+
+    scene.add(plane);
+  }
+
+  /* ----------------------------------
+     ANIMATION
+  ---------------------------------- */
+
+  function animate() {
+
+    animationFrameId =
+      requestAnimationFrame(animate);
+
+    renderer.render(scene, camera);
+
+    updateTransition();
+  }
+
+  function updateTransition() {
+
+    if (
+      transitionTexture === null ||
+      !isAnimating
+    ) return;
+
+    progress += 0.0225;
+
+    if (
+      progress > 0.1 &&
+      material.uniforms.uTexture.value !==
+      textures[transitionTexture]
+    ) {
+
+      material.uniforms.uTexture.value =
+        textures[transitionTexture];
+
+      material.uniforms.uTextureSize
+        .value.set(
+          textures[transitionTexture]
+            .image.width,
+
+          textures[transitionTexture]
+            .image.height
+        );
+    }
+
+    if (progress >= 1) {
+
+      progress = 1;
+
+      activeTexture =
+        Number(transitionTexture);
+
+      transitionTexture = null;
+
+      isAnimating = false;
+
+      updateLottieVisibility(
+        String(activeTexture)
+      );
+    }
+
+    material.uniforms.uProgress.value =
+      progress;
+  }
+
+  /* ----------------------------------
+     UI
+  ---------------------------------- */
+
+  function updateZIndex(activeLink) {
+
+    const buttons =
+      document.querySelectorAll(
+        "[collection-button]"
+      );
+
+    if (!buttons.length) return;
+
+    buttons.forEach((button) => {
+
+      const buttonId =
+        button.getAttribute(
+          "collection-button"
+        );
+
+      if (buttonId === activeLink) {
+
+        button.setAttribute(
+          "data-z-index",
+          "2"
+        );
+
+      } else {
+
+        button.setAttribute(
+          "data-z-index",
+          "-1"
+        );
+      }
+    });
+  }
+
+  function updateLottieVisibility(
+    activeLink
+  ) {
+
+    const lottie1 =
+      document.querySelector(
+        ".lottie_case-index"
+      );
+
+    const lottie2 =
+      document.querySelector(
+        ".lottie_case-index-2"
+      );
+
+    if (!lottie1 || !lottie2) return;
+
+    if (activeLink === "1") {
+
+      lottie1.style.opacity = "1";
+      lottie2.style.opacity = "0";
+
+    } else {
+
+      lottie1.style.opacity = "0";
+      lottie2.style.opacity = "1";
+    }
+  }
+
+  function setInitialStyles() {
+
+    document
+      .querySelectorAll(
+        '[data-collection-link="1"]'
+      )
+      .forEach((element) => {
+        element.classList.add(
+          "active"
+        );
+      });
+
+    updateLottieVisibility(
+      String(activeTexture)
+    );
+
+    updateZIndex(
+      String(activeTexture)
+    );
+  }
+
+  /* ----------------------------------
+     EVENTS
+  ---------------------------------- */
+
+  function setupEventListeners() {
+
+    document
+      .querySelectorAll(
+        "[data-collection-link]"
+      )
+      .forEach((link) => {
+
+        link.addEventListener(
+          "click",
+          handleCollectionClick
+        );
+      });
+  }
+
+  function handleCollectionClick() {
+
+    const newTexture =
+      this.getAttribute(
+        "data-collection-link"
+      );
+
+    if (
+      Number(newTexture) ===
+      activeTexture ||
+
+      isAnimating
+    ) return;
+
+    transitionTexture = newTexture;
+
+    progress = 0;
+
+    isAnimating = true;
+
+    document
+      .querySelectorAll(
+        "[data-collection-link]"
+      )
+      .forEach((el) => {
+        el.classList.remove(
+          "active"
+        );
+      });
+
+    document
+      .querySelectorAll(
+        `[data-collection-link="${newTexture}"]`
+      )
+      .forEach((el) => {
+        el.classList.add(
+          "active"
+        );
+      });
+
+    updateZIndex(newTexture);
+
+    updateLottieVisibility(
+      newTexture
+    );
+  }
+
+  /* ----------------------------------
+     RESIZE
+  ---------------------------------- */
+
+  function handleResize() {
+
+    camera.aspect =
+      container.clientWidth /
+      container.clientHeight;
+
+    camera.updateProjectionMatrix();
+
+    renderer.setSize(
+      container.clientWidth,
+      container.clientHeight
+    );
+
+    material.uniforms.uElementSize
+      .value.set(
+        container.clientWidth,
+        container.clientHeight
+      );
+  }
+
+  let resizeTimeout;
+
+  window.addEventListener(
+    "resize",
+    () => {
+
+      clearTimeout(
+        resizeTimeout
+      );
+
+      resizeTimeout =
+        setTimeout(() => {
+
+          handleResize();
+
+        }, 100);
+    }
+  );
+
+  /* ----------------------------------
+     CLEANUP
+  ---------------------------------- */
+
+  window.addEventListener(
+    "beforeunload",
+    () => {
+
+      cancelAnimationFrame(
+        animationFrameId
+      );
+
+      if (renderer) {
+        renderer.dispose();
+      }
+
+      if (material) {
+        material.dispose();
+      }
+
+      if (plane?.geometry) {
+        plane.geometry.dispose();
+      }
+
+      Object.values(textures)
+        .forEach((texture) => {
+          texture.dispose();
+        });
+    }
+  );
+
+  /* ----------------------------------
+     START
+  ---------------------------------- */
+
+  document.addEventListener(
+    "DOMContentLoaded",
+    initWebGL
+  );
+
+})();
+</script>
+
+</body>
+</html>
